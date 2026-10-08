@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>SmartStock: inventory reorder assistant</title>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#eceff2;--ink:#15202b;--mut:#5b6b78;--card:#fff;--line:#cdd6dd;--red:#c93a2b;--amb:#d98a00;--grn:#2a7d4f;--acc:#1d4e6e;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f171e;--ink:#e7edf1;--mut:#92a3af;--card:#17232c;--line:#2b3c48;--red:#ef6b5c;--amb:#f0b23a;--grn:#55b583;--acc:#79b4d6}}
+:root[data-theme="dark"]{--bg:#0f171e;--ink:#e7edf1;--mut:#92a3af;--card:#17232c;--line:#2b3c48;--red:#ef6b5c;--amb:#f0b23a;--grn:#55b583;--acc:#79b4d6}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*,*:before,*:after{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:Archivo,system-ui,sans-serif;line-height:1.45}
+main{max-width:1000px;margin:0 auto;padding:26px 16px 50px}
+h1{font-size:clamp(26px,5vw,40px);font-weight:800;margin:0;letter-spacing:-.02em}
+.sub{color:var(--mut);margin:4px 0 22px}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:0;border-top:2px solid var(--ink);border-bottom:1px solid var(--line);margin-bottom:26px}
+.kpi{padding:12px 14px 12px 0}
+.kpi b{display:block;font-size:clamp(22px,4vw,32px);font-weight:800}
+.kpi span{font-size:13px;color:var(--mut)}
+@media(max-width:640px){.kpis{grid-template-columns:1fr 1fr}}
+h2{font-size:18px;margin:0 0 4px}
+.hint{font-size:13px;color:var(--mut);margin:0 0 10px}
+.scroll{overflow-x:auto;background:var(--card);border:1px solid var(--line);border-radius:8px}
+table{border-collapse:collapse;width:100%;min-width:900px}
+th{font-size:12px;font-weight:600;color:var(--mut);text-align:left;padding:9px 10px;border-bottom:1px solid var(--line)}
+td{padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:middle;font-size:14px}
+tr.row{cursor:pointer}
+tr.row.sel{background:color-mix(in srgb,var(--acc) 10%,transparent)}
+tr:last-child td{border-bottom:0}
+td input{width:62px;font:inherit;padding:5px 6px;border:1px solid var(--line);border-radius:5px;background:var(--bg);color:var(--ink)}
+input:focus,tr:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+.gauge{position:relative;height:12px;min-width:150px;background:var(--line);border-radius:6px}
+.gauge i{position:absolute;left:0;top:0;bottom:0;border-radius:6px;transition:width .25s}
+.gauge u{position:absolute;left:50%;top:-4px;bottom:-4px;width:2px;background:var(--ink)}
+.pill{font-weight:800;font-size:12px;padding:3px 8px;border-radius:4px;color:#fff;display:inline-block}
+.detail{margin-top:26px;display:grid;grid-template-columns:1.5fr 1fr;gap:18px}
+@media(max-width:760px){.detail{grid-template-columns:1fr}}
+.box{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:14px}
+svg{display:block;width:100%;height:auto}
+.calc p{margin:6px 0;font-size:14px}
+.calc .big{font-size:15px;font-weight:600;padding:10px;background:var(--bg);border-left:4px solid var(--acc);margin-top:12px}
+footer{margin-top:26px;font-size:13px;color:var(--mut)}
+td input.t{width:110px}td input.u{width:58px}
+.rm{border:0;background:none;color:var(--mut);font-size:20px;cursor:pointer;line-height:1;padding:2px 6px}.rm:hover{color:var(--red)}
+.add{margin-top:18px}.af{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;align-items:end}
+@media(max-width:640px){.af{grid-template-columns:1fr 1fr}}
+.af label{display:block;font-size:12px;color:var(--mut);margin-bottom:3px}.af input{width:100%}
+.btn{font:inherit;font-weight:600;padding:8px 12px;border:0;border-radius:6px;background:var(--acc);color:var(--bg);cursor:pointer}
+.btn:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+.err{color:var(--red);font-size:13px;margin:8px 0 0;min-height:1em}
+</style>
+</head>
+<body>
+<main>
+<h1>SmartStock</h1>
+<p class="sub">Which products to reorder, when, and how much. Change stock, lead time or safety stock and everything recalculates.</p>
+
+<div class="kpis">
+  <div class="kpi"><b id="k1"></b><span>commodities</span></div>
+  <div class="kpi"><b id="k2"></b><span>inventory value</span></div>
+  <div class="kpi"><b id="k3"></b><span>to reorder now</span></div>
+  <div class="kpi"><b id="k4"></b><span>value of recommended orders</span></div>
+</div>
+
+<h2>Commodities</h2>
+<p class="hint">The black tick on each bar is the reorder point. Stock left of it means order now. Click a row for detail. Name and unit are editable.</p>
+<div class="scroll"><table>
+<thead><tr><th>Commodity</th><th>Unit</th><th>Stock vs reorder point</th><th>Stock</th><th>Lead time (days)</th><th>Safety stock</th><th>Status</th><th>Order qty</th><th></th></tr></thead>
+<tbody id="tb"></tbody></table></div>
+
+<div class="box add"><h2>Add a commodity</h2><p class="hint">Average daily demand is used to simulate its sales history, so the forecast has something to learn from.</p>
+<div class="af">
+<div><label for="an">Name</label><input id="an" type="text" placeholder="e.g. Cement"></div>
+<div><label for="au">Unit</label><input id="au" type="text" placeholder="kg, bags, pcs" value="pcs"></div>
+<div><label for="ad">Avg daily demand</label><input id="ad" type="number" min="1" value="10"></div>
+<div><label for="ac">Unit cost (₹)</label><input id="ac" type="number" min="0" value="1000"></div>
+<div><label for="as">Current stock</label><input id="as" type="number" min="0" value="100"></div>
+<div><label for="al">Lead time (days)</label><input id="al" type="number" min="1" value="5"></div>
+<div><label for="ax">Safety stock</label><input id="ax" type="number" min="0" value="20"></div>
+<div><button class="btn" id="addb" type="button">Add commodity</button></div>
+</div><p class="err" id="err" role="alert"></p></div>
+<div class="detail">
+  <div class="box"><h2 id="dt"></h2><p class="hint">Units sold per day: last 45 days, then 14-day forecast (dashed).</p><svg id="ch" role="img" aria-label="Demand history and forecast"></svg></div>
+  <div class="box calc" id="calc"></div>
+</div>
+
+<footer>Demo data is simulated: 5 products, 180 days, with weekday patterns, promos and holidays. The forecast here is a trend-adjusted average with a day-of-week pattern. The Python version uses a Random Forest.</footer>
+</main>
+<script>
+var P=[{n:"Motor A",u:"pcs",b:12,s:.25,t:.02,c:5000,st:50,lt:5,ss:20},{n:"Motor B",u:"pcs",b:6,s:.15,t:0,c:3500,st:120,lt:7,ss:25},
+{n:"Battery X",u:"pcs",b:9,s:.30,t:.03,c:8000,st:30,lt:4,ss:15},{n:"Gear C",u:"pcs",b:7,s:.10,t:-.01,c:1200,st:90,lt:6,ss:20},
+{n:"Sensor D",u:"pcs",b:15,s:.20,t:.01,c:900,st:140,lt:3,ss:25}];
+var N=180,END=new Date(2026,9,6),HOR=14,sel=0;
+function rng(a){return function(){a|=0;a=a+0x6D2B79F5|0;var t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+function gauss(r){return Math.sqrt(-2*Math.log(1-r()))*Math.cos(2*Math.PI*r())}
+function esc(s){return String(s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
+var R=rng(42);
+function history(p){p.d=[];for(var i=0;i<N;i++){var dt=new Date(END);dt.setDate(END.getDate()-(N-1-i));var wk=dt.getDay()%6!==0?1:-1;
+ var mu=Math.max(.5,(p.b+p.t*i)*(1+p.s*wk)*(R()<.08?1.35:1));p.d.push(Math.max(0,Math.round(mu+Math.sqrt(mu)*gauss(R))))}p.f=forecast(p)}
+function dow(k){var d=new Date(END);d.setDate(END.getDate()+k);return d.getDay()}
+function forecast(p){var d=p.d,n=d.length,m=function(a,b){var s=0;for(var i=a;i<b;i++)s+=d[i];return s/(b-a)};
+ var lvl=m(n-14,n),trend=(lvl-m(n-28,n-14))/14,idx=[],cnt=[],tot=m(n-84,n)||1;
+ for(var i=0;i<7;i++){idx[i]=0;cnt[i]=0}
+ for(i=n-84;i<n;i++){var dd=new Date(END);dd.setDate(END.getDate()-(n-1-i));idx[dd.getDay()]+=d[i];cnt[dd.getDay()]++}
+ for(i=0;i<7;i++)idx[i]=idx[i]/cnt[i]/tot;
+ var f=[];for(var k=1;k<=HOR;k++)f.push(Math.max(0,(lvl+trend*(k+7))*idx[dow(k)]));return f}
+P.forEach(history);
+function sum(a,n){var s=0;for(var i=0;i<n;i++)s+=a[i];return s}
+function calc(p){var ltd=sum(p.f,p.lt),rop=ltd+p.ss,s=p.st<rop?"REORDER":p.st<rop*1.25?"LOW":"SAFE";
+ var q=s==="REORDER"?Math.ceil(sum(p.f,p.lt+7)+p.ss-p.st):0;return{ltd:ltd,rop:rop,s:s,q:q}}
+var col={REORDER:"var(--red)",LOW:"var(--amb)",SAFE:"var(--grn)"},inr=function(x){return"₹"+Math.round(x).toLocaleString("en-IN")};
+var tb=document.getElementById("tb");
+function build(){tb.innerHTML="";
+ P.forEach(function(p,i){var tr=document.createElement("tr");tr.className="row";tr.tabIndex=0;
+  tr.innerHTML='<td><input class="t" type="text" data-k="n" aria-label="Commodity name"></td><td><input class="u" type="text" data-k="u" aria-label="Unit"></td>'+
+  '<td><div class="gauge"><i id="g'+i+'"></i><u></u></div></td>'+
+  ['st','lt','ss'].map(function(k){return'<td><input type="number" min="0" data-k="'+k+'" aria-label="'+k+'"></td>'}).join('')+
+  '<td><span class="pill" id="s'+i+'"></span></td><td id="q'+i+'"></td><td><button class="rm" type="button" aria-label="Remove commodity" title="Remove">&times;</button></td>';
+  tr.querySelectorAll("input").forEach(function(inp){inp.dataset.i=i;inp.value=p[inp.dataset.k]});
+  tr.addEventListener("click",function(){sel=i;update()});
+  tr.querySelector(".rm").addEventListener("click",function(e){e.stopPropagation();P.splice(i,1);if(sel>=P.length)sel=Math.max(0,P.length-1);build()});
+  tb.appendChild(tr)});update()}
+tb.addEventListener("input",function(e){var t=e.target,k=t.dataset.k;if(!k)return;
+ P[t.dataset.i][k]=(k==="n"||k==="u")?t.value:Math.max(0,+t.value||0);update()});
+function chart(p){var h=p.d.slice(-45),all=h.concat(p.f),mx=Math.max.apply(null,all)*1.1||1,W=600,H=240,L=34,B=22,T=8,
+ X=function(i){return L+i*(W-L-6)/(all.length-1)},Y=function(v){return T+(H-T-B)*(1-v/mx)},o="";
+ for(var g=0;g<=4;g++){var v=mx*g/4;o+='<line x1="'+L+'" x2="'+W+'" y1="'+Y(v)+'" y2="'+Y(v)+'" stroke="var(--line)"/><text x="'+(L-5)+'" y="'+(Y(v)+4)+'" text-anchor="end" font-size="11" fill="var(--mut)">'+Math.round(v)+'</text>'}
+ var a=h.map(function(v,i){return X(i)+","+Y(v)}).join(" "),f=[h[h.length-1]].concat(p.f).map(function(v,i){return X(h.length-1+i)+","+Y(v)}).join(" ");
+ o+='<polyline points="'+a+'" fill="none" stroke="var(--acc)" stroke-width="2"/><polyline points="'+f+'" fill="none" stroke="var(--red)" stroke-width="2" stroke-dasharray="6 4"/>';
+ o+='<line x1="'+X(h.length-1)+'" x2="'+X(h.length-1)+'" y1="'+T+'" y2="'+(H-B)+'" stroke="var(--mut)" stroke-dasharray="2 3"/><text x="'+(X(h.length-1)-4)+'" y="'+(H-6)+'" text-anchor="end" font-size="11" fill="var(--mut)">past</text><text x="'+(X(h.length-1)+4)+'" y="'+(H-6)+'" font-size="11" fill="var(--mut)">forecast</text>';
+ var s=document.getElementById("ch");s.setAttribute("viewBox","0 0 "+W+" "+H);s.innerHTML=o}
+function update(){var n=0,val=0,ord=0,ids=["k1","k2","k3","k4"];
+ P.forEach(function(p,i){var c=calc(p);p.c2=c;val+=p.st*p.c;if(c.s==="REORDER")n++;ord+=c.q*p.c;
+  var g=document.getElementById("g"+i);g.style.width=Math.min(100,p.st/(c.rop*2||1)*100)+"%";g.style.background=col[c.s];
+  var s=document.getElementById("s"+i);s.textContent=c.s;s.style.background=col[c.s];document.getElementById("q"+i).textContent=c.q?c.q+" "+p.u:"–";
+  tb.children[i].classList.toggle("sel",i===sel)});
+ document.getElementById("k1").textContent=P.length;document.getElementById("k2").textContent=inr(val);
+ document.getElementById("k3").textContent=n;document.getElementById("k4").textContent=inr(ord);
+ if(!P.length){document.getElementById("dt").textContent="No commodities";document.getElementById("ch").innerHTML="";
+  document.getElementById("calc").innerHTML='<p>Add a commodity above to see its forecast.</p>';return}
+ var p=P[sel],c=p.c2,u=esc(p.u||"units");document.getElementById("dt").textContent=p.n||"Unnamed commodity";chart(p);
+ var d7=sum(p.f,7);
+ document.getElementById("calc").innerHTML='<h2>How the call is made</h2>'+
+ '<p>Forecast demand, next 7 days: <b>'+Math.round(d7)+' '+u+'</b> (about '+(d7/7).toFixed(1)+' a day)</p>'+
+ '<p>Demand during '+p.lt+'-day lead time: <b>'+Math.round(c.ltd)+' '+u+'</b></p><p>Plus safety stock: <b>'+p.ss+' '+u+'</b></p>'+
+ '<p>Reorder point: <b>'+Math.round(c.rop)+'</b> &nbsp; Stock now: <b>'+p.st+'</b></p>'+
+ '<p class="big">'+(c.s==="REORDER"?'Order '+c.q+' '+u+' ('+inr(c.q*p.c)+'). It covers the lead time, a week after, and safety stock.':c.s==="LOW"?'Not yet. Stock is within 25% of the reorder point, so watch it.':'Safe. About '+(d7>0?(p.st/(d7/7)).toFixed(0):"many")+' days of stock at the forecast rate.')+'</p>'}
+document.getElementById("addb").addEventListener("click",function(){
+ var v=function(id){return document.getElementById(id).value},err=document.getElementById("err"),name=v("an").trim();
+ if(!name){err.textContent="Enter a name for the commodity.";return}
+ if(!(+v("ad")>0)){err.textContent="Average daily demand must be more than 0.";return}
+ if(!(+v("al")>=1)){err.textContent="Lead time must be at least 1 day.";return}
+ err.textContent="";
+ var p={n:name,u:v("au").trim()||"units",b:+v("ad"),s:.2,t:0,c:+v("ac")||0,st:Math.max(0,+v("as")||0),lt:Math.floor(+v("al")),ss:Math.max(0,+v("ax")||0)};
+ history(p);P.push(p);sel=P.length-1;document.getElementById("an").value="";build();
+ tb.children[sel].scrollIntoView({block:"nearest"})});
+build();
+</script>
+</body>
+</html>
